@@ -1,0 +1,26 @@
+@startuml c4-component-frontend
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Mars Rover - Components of Frontend
+
+Container(gateway, "API Gateway", "nginx", "Single entry point; routes requests to the appropriate backend service; reached from the player's browser over HTTP")
+
+Container_Boundary(frontend, "Frontend") {
+    Component(app, "App", "React, TypeScript", "Root component; manages global UI state: plateau config, rover list, full step history, replay cursor")
+    Component(plateau_form, "Plateau Form", "React, TypeScript", "Collects plateau dimensions and initial rover positions and headings from the player")
+    Component(command_form, "Command Form", "React, TypeScript", "Collects command strings per rover and triggers submission")
+    Component(grid_view, "Grid View", "React, TypeScript", "Renders the plateau as a 2D grid; positions and orients rover icons from state passed by App")
+    Component(replay_controls, "Replay Controls", "React, TypeScript", "Steps the replay cursor forward and backward; passes the cursor-indexed step state to App, which forwards it to Grid View")
+    Component(api_client, "API Client", "TypeScript, fetch", "Centralises all HTTP calls to the backend; serialises requests and deserialises typed responses")
+}
+
+Rel(app, plateau_form, "Renders and passes callbacks")
+Rel(app, command_form, "Renders and passes callbacks")
+Rel(app, grid_view, "Renders with current or replay step state")
+Rel(app, replay_controls, "Renders and passes step history and cursor")
+Rel(plateau_form, api_client, "Submits plateau config via")
+Rel(command_form, api_client, "Submits commands via")
+Rel(replay_controls, app, "Updates replay cursor in")
+Rel(api_client, gateway, "Calls", "HTTP/JSON")
+
+@enduml

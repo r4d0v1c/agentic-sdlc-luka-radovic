@@ -1,0 +1,36 @@
+@startuml sequence-execute-commands
+title Execute Commands (Happy Path)
+
+actor Player
+participant "Frontend\n(React SPA)" as FE
+participant "API Gateway\n(nginx)" as GW
+participant "Mission Service" as MS
+participant "Command Service" as CS
+participant "Simulation Service" as SS
+database "InMemorySession\nRepository" as DB
+
+Player -> FE : Enter command string\nfor rover 0 (e.g. "LMLM")
+FE -> GW : POST /api/v1/session/commands\n{ rover_index: 0, commands: "LMLM" }
+GW -> MS : POST /api/v1/session/commands\n{ rover_index: 0, commands: "LMLM" }
+MS -> DB : load()
+DB --> MS : Session
+MS -> CS : POST /api/v1/commands/parse\n{ commands: "LMLM" }
+CS -> CS : Parse "LMLM" into\n[TURN_LEFT, MOVE_FORWARD,\nTURN_LEFT, MOVE_FORWARD]
+CS --> MS : 200 OK\n{ operations: [...] }
+
+loop for each Operation
+    MS -> MS : Collect occupied positions\n(all rovers except rover 0)
+    MS -> SS : POST /api/v1/simulation/move\n{ rover, operation, plateau,\noccupied_positions }
+    SS -> SS : Apply operation;\ncheck bounds and collisions
+    SS --> MS : 200 OK\n{ rover: { position, heading },\nrejection: null }
+    MS -> MS : Update rover 0 state;\nappend Step to history
+end
+
+MS -> DB : save(updated Session)
+DB --> MS : ok
+MS --> GW : 200 OK\n{ rovers: [...], new_steps: [...] }
+GW --> FE : 200 OK\n{ rovers: [...], new_steps: [...] }
+FE -> FE : Update rover states\nand append steps to history
+FE --> Player : Grid updated;\nreplay controls enabled
+
+@enduml

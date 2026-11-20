@@ -1,0 +1,11 @@
+@startuml c4-context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title Mars Rover - System Context
+
+Person(player, "Player", "Configures the plateau, deploys rovers, issues command sequences, and observes results")
+System(marsrover, "Mars Rover System", "Accepts plateau and rover configuration, executes command sequences, enforces collision and boundary rules, and returns rover positions and headings via a browser UI")
+
+BiRel(player, marsrover, "Configures plateau, deploys rovers, sends commands / receives positions, headings and errors", "HTTP")
+
+@enduml

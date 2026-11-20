@@ -1,0 +1,24 @@
+@startuml c4-container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Mars Rover - Container Diagram
+
+Person(player, "Player", "Configures plateau, deploys rovers, issues commands, observes results")
+
+System_Boundary(marsrover, "Mars Rover System") {
+    Container(frontend, "Frontend", "React, TypeScript", "Renders plateau grid, accepts player input, drives step-by-step replay")
+    Container(gateway, "API Gateway", "nginx", "Single entry point; routes requests to the appropriate backend service")
+    Container(mission, "Mission Service", "Python 3.12, FastAPI", "Orchestrates mission execution; holds in-memory session state (plateau, rovers, step history)")
+    Container(command, "Command Service", "Python 3.12, FastAPI", "Parses raw command strings into ordered Operation lists; stateless")
+    Container(simulation, "Simulation Service", "Python 3.12, FastAPI", "Applies a single Operation to a Rover; returns new state or CommandRejection; stateless")
+}
+
+Rel(player, frontend, "Uses", "HTTP")
+Rel(frontend, gateway, "Calls REST API", "HTTP/JSON")
+Rel(gateway, mission, "Routes session and command requests", "HTTP/JSON")
+Rel(gateway, command, "Routes parse requests", "HTTP/JSON")
+Rel(gateway, simulation, "Routes move requests", "HTTP/JSON")
+Rel(mission, command, "POST /api/v1/commands/parse", "HTTP/JSON")
+Rel(mission, simulation, "POST /api/v1/simulation/move", "HTTP/JSON")
+
+@enduml
