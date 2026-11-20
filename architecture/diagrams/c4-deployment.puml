@@ -1,0 +1,41 @@
+@startuml c4-deployment
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Deployment.puml
+
+title Mars Rover - Deployment
+
+Deployment_Node(machine, "Developer Machine", "Linux / macOS / Windows") {
+
+    Deployment_Node(compose, "Docker Compose", "docker compose up") {
+
+        Deployment_Node(fe_node, "frontend", "Docker container") {
+            Container(frontend, "Frontend", "React, TypeScript / nginx", "Serves compiled React SPA; listens on port 80 inside the container")
+        }
+
+        Deployment_Node(gw_node, "gateway", "Docker container") {
+            Container(gateway, "API Gateway", "nginx", "Reverse proxy; routes /api/v1/session* to mission:8000, /api/v1/commands* to command:8001, /api/v1/simulation* to simulation:8002; published on host port 8080")
+        }
+
+        Deployment_Node(mission_node, "mission", "Docker container") {
+            Container(mission, "Mission Service", "Python 3.12, FastAPI / uvicorn", "Orchestrates missions; holds in-memory session; listens on port 8000 (internal only)")
+        }
+
+        Deployment_Node(command_node, "command", "Docker container") {
+            Container(command, "Command Service", "Python 3.12, FastAPI / uvicorn", "Parses command strings into Operation lists; listens on port 8001 (internal only)")
+        }
+
+        Deployment_Node(sim_node, "simulation", "Docker container") {
+            Container(simulation, "Simulation Service", "Python 3.12, FastAPI / uvicorn", "Executes single moves; returns new Rover state or CommandRejection; listens on port 8002 (internal only)")
+        }
+
+    }
+
+}
+
+Rel(frontend, gateway, "Calls REST API", "HTTP/JSON, port 8080")
+Rel(gateway, mission, "Routes session requests", "HTTP/JSON, port 8000")
+Rel(gateway, command, "Routes parse requests", "HTTP/JSON, port 8001")
+Rel(gateway, simulation, "Routes move requests", "HTTP/JSON, port 8002")
+Rel(mission, command, "POST /api/v1/commands/parse", "HTTP/JSON, port 8001")
+Rel(mission, simulation, "POST /api/v1/simulation/move", "HTTP/JSON, port 8002")
+
+@enduml

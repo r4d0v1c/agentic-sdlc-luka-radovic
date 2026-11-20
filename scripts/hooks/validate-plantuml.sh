@@ -45,6 +45,10 @@ while IFS= read -r puml; do
 
     svg="${puml%.puml}.svg"
     if [ -f "$svg" ] && [ -s "$svg" ]; then
+        # Ensure trailing newline so end-of-file-fixer does not conflict
+        if [ -n "$(tail -c1 "$svg")" ]; then
+            echo "" >> "$svg"
+        fi
         git add "$svg"
         echo "    ✅ $svg"
     else

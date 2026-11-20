@@ -1,0 +1,26 @@
+@startuml c4-component-backend
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Mars Rover - Components of Mission Service
+
+Container(gateway, "API Gateway", "nginx", "Routes inbound HTTP requests to the correct service")
+Container(command_svc, "Command Service", "Python 3.12, FastAPI", "Parses command strings into Operation lists")
+Container(sim_svc, "Simulation Service", "Python 3.12, FastAPI", "Executes a single move; returns new Rover state or CommandRejection")
+
+Container_Boundary(mission, "Mission Service") {
+    Component(router, "API Router", "FastAPI", "Receives HTTP requests, validates Pydantic schemas, returns JSON responses, maps domain errors to HTTP status codes")
+    Component(mission_app, "Mission Application", "Python", "Orchestrates mission execution: loads session, collects occupied positions, calls Command Service and Simulation Service, records each step including rejections, persists updated session")
+    Component(session_repo_iface, "SessionRepository", "Python ABC", "Port: load() and save() the active session")
+    Component(session_store, "InMemorySessionRepository", "Python dict", "Adapter: stores plateau, initial rover placements, current rover states and step history in process memory")
+    Component(http_client, "HTTP Client", "httpx", "Wraps calls to Command Service and Simulation Service; handles errors and non-2xx responses")
+}
+
+Rel(gateway, router, "Routes to", "HTTP/JSON")
+Rel(router, mission_app, "Delegates to")
+Rel(mission_app, http_client, "Calls Command Service and Simulation Service via")
+Rel(mission_app, session_repo_iface, "Reads and writes session via")
+Rel(session_repo_iface, session_store, "Implemented by")
+Rel(http_client, command_svc, "POST /api/v1/commands/parse", "HTTP/JSON")
+Rel(http_client, sim_svc, "POST /api/v1/simulation/move", "HTTP/JSON")
+
+@enduml

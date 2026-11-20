@@ -1,0 +1,31 @@
+@startuml sequence-oob-rejection
+title Command Rejected — Out of Bounds
+
+actor Player
+participant "Frontend\n(React SPA)" as FE
+participant "API Gateway\n(nginx)" as GW
+participant "Mission Service" as MS
+participant "Command Service" as CS
+participant "Simulation Service" as SS
+database "InMemorySession\nRepository" as DB
+
+Player -> FE : Submit command "M"\nfor rover at plateau edge\nfacing outward
+FE -> GW : POST /api/v1/session/commands\n{ rover_index: 0, commands: "M" }
+GW -> MS : POST /api/v1/session/commands\n{ rover_index: 0, commands: "M" }
+MS -> DB : load()
+DB --> MS : Session
+MS -> CS : POST /api/v1/commands/parse\n{ commands: "M" }
+CS --> MS : 200 OK\n{ operations: [MOVE_FORWARD] }
+MS -> MS : Collect occupied positions\n(all rovers except rover 0)
+MS -> SS : POST /api/v1/simulation/move\n{ rover, MOVE_FORWARD, plateau,\noccupied_positions }
+SS -> SS : Target cell outside plateau bounds;\nreturn rejection
+SS --> MS : 200 OK\n{ rover: unchanged,\nrejection: "OUT_OF_BOUNDS" }
+MS -> MS : Keep rover 0 at current position;\nappend Step { rejection: "OUT_OF_BOUNDS" }
+MS -> DB : save(updated Session)
+DB --> MS : ok
+MS --> GW : 200 OK\n{ rovers: [...], new_steps: [{ rejection: "OUT_OF_BOUNDS" }] }
+GW --> FE : 200 OK\n{ rovers: [...], new_steps: [...] }
+FE -> FE : Rover 0 stays in place;\nstep shown with out-of-bounds indicator
+FE --> Player : Grid updated;\nboundary violation highlighted on replay
+
+@enduml

@@ -1,0 +1,31 @@
+@startuml sequence-collision-rejection
+title Command Rejected — Collision
+
+actor Player
+participant "Frontend\n(React SPA)" as FE
+participant "API Gateway\n(nginx)" as GW
+participant "Mission Service" as MS
+participant "Command Service" as CS
+participant "Simulation Service" as SS
+database "InMemorySession\nRepository" as DB
+
+Player -> FE : Submit command "M"\nfor rover that would\nmove onto occupied cell
+FE -> GW : POST /api/v1/session/commands\n{ rover_index: 1, commands: "M" }
+GW -> MS : POST /api/v1/session/commands\n{ rover_index: 1, commands: "M" }
+MS -> DB : load()
+DB --> MS : Session
+MS -> CS : POST /api/v1/commands/parse\n{ commands: "M" }
+CS --> MS : 200 OK\n{ operations: [MOVE_FORWARD] }
+MS -> MS : Collect occupied positions\n(includes rover 0 at target cell)
+MS -> SS : POST /api/v1/simulation/move\n{ rover, MOVE_FORWARD, plateau,\noccupied_positions }
+SS -> SS : Target cell occupied;\nreturn rejection
+SS --> MS : 200 OK\n{ rover: unchanged,\nrejection: "COLLISION" }
+MS -> MS : Keep rover 1 at current position;\nappend Step { rejection: "COLLISION" }
+MS -> DB : save(updated Session)
+DB --> MS : ok
+MS --> GW : 200 OK\n{ rovers: [...], new_steps: [{ rejection: "COLLISION" }] }
+GW --> FE : 200 OK\n{ rovers: [...], new_steps: [...] }
+FE -> FE : Rover 1 stays in place;\nstep shown with collision indicator
+FE --> Player : Grid updated;\ncollision highlighted on replay
+
+@enduml
