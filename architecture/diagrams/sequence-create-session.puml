@@ -1,0 +1,21 @@
+@startuml sequence-create-session
+title Create Session
+
+actor Player
+participant "Frontend\n(React SPA)" as FE
+participant "API Gateway\n(nginx)" as GW
+participant "Mission Service" as MS
+database "InMemorySession\nRepository" as DB
+
+Player -> FE : Enter plateau dimensions\nand rover placements
+FE -> GW : POST /api/v1/session\n{ plateau, rovers }
+GW -> MS : POST /api/v1/session\n{ plateau, rovers }
+MS -> MS : Validate plateau and\nrover positions (no overlaps)
+MS -> DB : save(Session { plateau,\ninitial_rovers, rovers, history=[] })
+DB --> MS : ok
+MS --> GW : 201 Created\n{ plateau, rovers }
+GW --> FE : 201 Created\n{ plateau, rovers }
+FE -> FE : Store session state;\nrender plateau grid\nwith rover icons
+FE --> Player : Grid displayed at step 0
+
+@enduml

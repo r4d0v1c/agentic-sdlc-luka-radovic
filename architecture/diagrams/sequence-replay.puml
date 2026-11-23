@@ -1,0 +1,32 @@
+@startuml sequence-replay
+title Step-by-Step Replay
+
+actor Player
+participant "Frontend\n(React SPA)" as FE
+participant "API Gateway\n(nginx)" as GW
+participant "Mission Service" as MS
+database "InMemorySession\nRepository" as DB
+
+Player -> FE : Click "Replay" button
+
+FE -> GW : GET /api/v1/session/history
+GW -> MS : GET /api/v1/session/history
+MS -> DB : load()
+DB --> MS : Session\n{ initial_rovers, history: [Step, ...] }
+MS --> GW : 200 OK\n{ initial_rovers, history: [Step, ...] }
+GW --> FE : 200 OK\n{ initial_rovers, history: [...] }
+
+FE -> FE : Set replay cursor to 0;\nrender grid from initial_rovers\n(step 0 — no commands yet)
+FE --> Player : Grid at step 0
+
+loop Player steps through replay
+    Player -> FE : Click "Next Step"
+    FE -> FE : Increment cursor;\nread Step[cursor] from local history;\nderive rover positions at this step
+    FE --> Player : Grid updated to step N\n(rejection indicator shown if step was rejected)
+end
+
+Player -> FE : Click "Previous Step"
+FE -> FE : Decrement cursor;\nderive rover positions at cursor - 1
+FE --> Player : Grid rewound to previous step
+
+@enduml
