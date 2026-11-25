@@ -36,8 +36,8 @@
 ## Pareto Progress
 
 ```
-📊 Pareto Progress: 3/3 core stories (100% of 20% core stories) - core set complete
-🎯 Core functionality coverage: ~80% of 80% target
+Pareto Progress: 3/3 core stories (100% of 20% core stories) - core set complete
+Core functionality coverage: ~80% of 80% target
 Supporting stories approved: 2/6 (SIMULATION-STORY-002, COMMAND-STORY-002)
 ```
 
