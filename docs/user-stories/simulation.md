@@ -475,3 +475,289 @@ SO THAT I can observe move requests and their outcomes using `docker compose log
 8. SIMULATION-STORY-001 end-to-end verification: Player submits `LMLMLMLMM` for Rover 0 on plateau `5 5` from `1 2 N`, Mission Service completes the full loop, Grid View renders Rover 0 at `1 3 N` (SIMULATION-STORY-001-S1)
 
 ---
+
+## SIMULATION-STORY-002: Reject Out-of-Bounds Moves
+
+**Priority**: Supporting (80%)
+**Features**: F-4 (Collision detection)
+**Architecture references**:
+* Chapter 6.4 (06-runtime-view.md): Command Rejected: Out of Bounds, full walkthrough steps 1-5
+* Chapter 5, Rejected-Move Behaviour (05-building-block-view.md): when the Simulation Service returns `OUT_OF_BOUNDS`, the Mission Service keeps the rover at its current position and appends a `Step` with `rejection` set
+* Chapter 5.2 (05-building-block-view.md): Simulation domain component; `POST /api/v1/simulation/move` inputs and `CommandRejection` return
+* Chapter 5, Key Domain Types (05-building-block-view.md): `CommandRejection` value object (`OUT_OF_BOUNDS` or `COLLISION`); `Step` with `rejection` field
+* Chapter 5, Step History Contract (05-building-block-view.md): step history records rejected moves; `rejection` field is non-null for refused moves
+* Chapter 10.2 (10-quality-requirements.md): QS-03 - Rover stays at `0 0 S` on plateau `5 5` after `M`; `rejection: "OUT_OF_BOUNDS"`; HTTP 200
+
+AS A Player
+I WANT a move that would take a rover off the plateau to be rejected and the rover to stay in place
+SO THAT I know immediately when a command would go out of bounds and can see the failed attempt in the history
+
+---
+
+### Scenarios
+
+#### SCENARIO 1: MOVE_FORWARD rejected at south edge facing S (QS-03)
+
+**Scenario ID**: SIMULATION-STORY-002-S1
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `0 0 S`
+
+**WHEN**
+* The player submits the Command Form for Rover 0 with command string `M`
+
+**THEN**
+* Rover 0 remains at `0 0 S` in the response (position and heading unchanged)
+* Assumption: HTTP 200 is returned (Chapter 6.4 step 4 confirms HTTP 200; response field names are not specified by the architecture)
+* Assumption: The response contains a step with `rejection: "OUT_OF_BOUNDS"` (Chapter 6.4 step 4; `OUT_OF_BOUNDS` value from Chapter 5, Key Domain Types)
+* The Grid View renders Rover 0 at `(0,0)` facing `S` with an out-of-bounds indicator on that step (Chapter 6.4 step 5)
+
+---
+
+#### SCENARIO 2: MOVE_FORWARD rejected at north edge facing N
+
+**Scenario ID**: SIMULATION-STORY-002-S2
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `2 5 N`
+
+**WHEN**
+* The player submits the Command Form for Rover 0 with command string `M`
+
+**THEN**
+* Rover 0 remains at `2 5 N`
+* Assumption: HTTP 200 is returned with `rejection: "OUT_OF_BOUNDS"` for that step
+* The Grid View renders Rover 0 at `(2,5)` facing `N` with an out-of-bounds indicator
+
+---
+
+#### SCENARIO 3: MOVE_FORWARD rejected at east edge facing E
+
+**Scenario ID**: SIMULATION-STORY-002-S3
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `5 2 E`
+
+**WHEN**
+* The player submits the Command Form for Rover 0 with command string `M`
+
+**THEN**
+* Rover 0 remains at `5 2 E`
+* Assumption: HTTP 200 is returned with `rejection: "OUT_OF_BOUNDS"` for that step
+* The Grid View renders Rover 0 at `(5,2)` facing `E` with an out-of-bounds indicator
+
+---
+
+#### SCENARIO 4: Rejected move is recorded in history; subsequent valid move succeeds
+
+**Scenario ID**: SIMULATION-STORY-002-S4
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `0 0 S`
+
+**WHEN**
+* The player submits the Command Form for Rover 0 with command string `MR`
+
+**THEN**
+* The first operation (`MOVE_FORWARD`) is rejected with `OUT_OF_BOUNDS`; Rover 0 stays at `0 0 S`
+* The second operation (`TURN_RIGHT`) succeeds; Rover 0 is now at `0 0 W`
+* Assumption: The response contains 2 `Step` records: the first with `rejection: "OUT_OF_BOUNDS"`, the second with `rejection: null`
+* The Grid View renders Rover 0 at `(0,0)` facing `W`
+
+---
+
+### Frontend Stories
+
+#### SIMULATION-FE-002.1: Grid View marks out-of-bounds steps with a visual indicator
+
+**Parent**: SIMULATION-STORY-002
+**Component**: Grid View, App (05-building-block-view.md, Chapter 5.2)
+**Architecture references**:
+* Chapter 6.4 (06-runtime-view.md): step 5 - Frontend renders rover in original position and marks step with out-of-bounds indicator
+* Chapter 5.2 (05-building-block-view.md): Grid View is purely presentational; App passes rover states and step history as props
+* Chapter 5, Step History Contract (05-building-block-view.md): `rejection` field is `"OUT_OF_BOUNDS"` or `null` per step
+
+AS A Player
+I WANT the grid to show the rover unmoved and mark the failed step with a visible out-of-bounds indicator
+SO THAT I can see at a glance that the move was refused and why
+
+##### SCENARIO 1: Grid View renders rover unmoved with out-of-bounds indicator
+
+**Scenario ID**: SIMULATION-FE-002.1-S1
+
+**GIVEN**
+* App state contains plateau `5 5`, Rover 0 at `0 0 S`
+* Assumption: The API Client returns a response with Rover 0 still at `0 0 S` and 1 new `Step` with `rejection: "OUT_OF_BOUNDS"`
+
+**WHEN**
+* App updates its state from the API response and passes it to Grid View
+
+**THEN**
+* Grid View renders Rover 0 at cell `(0,0)` facing `S` (position unchanged)
+* The step is marked with an out-of-bounds indicator (Chapter 6.4 step 5; exact visual form is not specified by the architecture)
+* No error dialog or blocking message is shown (HTTP 200 is returned, not an error)
+
+---
+
+### Backend Stories
+
+#### SIMULATION-BE-002.1: Simulation Service returns OUT_OF_BOUNDS rejection for a move outside the plateau
+
+**Parent**: SIMULATION-STORY-002
+**Service**: Simulation Service (`simulation:8002`)
+**Architecture references**:
+* Chapter 6.4 (06-runtime-view.md): steps 2-3 - Simulation Service computes target cell, finds it outside `(0,0)-(width,height)`, returns `{ rover: unchanged, rejection: "OUT_OF_BOUNDS" }`
+* Chapter 5.2 (05-building-block-view.md): Simulation domain component; `POST /api/v1/simulation/move`
+* Chapter 5, Key Domain Types (05-building-block-view.md): `CommandRejection` value object; `OUT_OF_BOUNDS`
+* Chapter 10.2 (10-quality-requirements.md): QS-03
+
+AS A Developer
+I WANT the Simulation Service to return `rejection: "OUT_OF_BOUNDS"` with the rover unchanged when a `MOVE_FORWARD` would take the rover outside the plateau boundary
+SO THAT the Mission Service can record the rejected step without altering the rover's position
+
+##### SCENARIO 1: MOVE_FORWARD south from (0,0) on plateau 5 5 is rejected (QS-03)
+
+**Scenario ID**: SIMULATION-BE-002.1-S1
+
+**GIVEN**
+* Assumption: Request body `{ "rover": { "x": 0, "y": 0, "heading": "S" }, "operation": "MOVE_FORWARD", "plateau": { "width": 5, "height": 5 }, "occupied_positions": [] }`
+
+**WHEN**
+* `POST /api/v1/simulation/move` is called
+
+**THEN**
+* HTTP 200 is returned
+* Assumption: Response body is `{ "rover": { "x": 0, "y": 0, "heading": "S" }, "rejection": "OUT_OF_BOUNDS" }` (rover unchanged; `OUT_OF_BOUNDS` from Chapter 5, Key Domain Types; field names not specified by the architecture)
+
+##### SCENARIO 2: MOVE_FORWARD north from (2,5) on plateau 5 5 is rejected
+
+**Scenario ID**: SIMULATION-BE-002.1-S2
+
+**GIVEN**
+* Assumption: Request body `{ "rover": { "x": 2, "y": 5, "heading": "N" }, "operation": "MOVE_FORWARD", "plateau": { "width": 5, "height": 5 }, "occupied_positions": [] }`
+
+**WHEN**
+* `POST /api/v1/simulation/move` is called
+
+**THEN**
+* HTTP 200 is returned
+* Assumption: Response body is `{ "rover": { "x": 2, "y": 5, "heading": "N" }, "rejection": "OUT_OF_BOUNDS" }`
+
+##### SCENARIO 3: MOVE_FORWARD east from (5,2) on plateau 5 5 is rejected
+
+**Scenario ID**: SIMULATION-BE-002.1-S3
+
+**GIVEN**
+* Assumption: Request body `{ "rover": { "x": 5, "y": 2, "heading": "E" }, "operation": "MOVE_FORWARD", "plateau": { "width": 5, "height": 5 }, "occupied_positions": [] }`
+
+**WHEN**
+* `POST /api/v1/simulation/move` is called
+
+**THEN**
+* HTTP 200 is returned
+* Assumption: Response body is `{ "rover": { "x": 5, "y": 2, "heading": "E" }, "rejection": "OUT_OF_BOUNDS" }`
+
+##### SCENARIO 4: Turn commands at the boundary are never rejected (only MOVE_FORWARD can go out of bounds)
+
+**Scenario ID**: SIMULATION-BE-002.1-S4
+
+**GIVEN**
+* Assumption: Request body `{ "rover": { "x": 0, "y": 0, "heading": "S" }, "operation": "TURN_LEFT", "plateau": { "width": 5, "height": 5 }, "occupied_positions": [] }`
+
+**WHEN**
+* `POST /api/v1/simulation/move` is called
+
+**THEN**
+* HTTP 200 is returned
+* Assumption: Response body is `{ "rover": { "x": 0, "y": 0, "heading": "E" }, "rejection": null }` (turn commands do not change position; no boundary violation possible)
+
+---
+
+#### SIMULATION-BE-002.2: Mission Service records OUT_OF_BOUNDS step and keeps rover position
+
+**Parent**: SIMULATION-STORY-002
+**Service**: Mission Service (`mission:8000`)
+**Architecture references**:
+* Chapter 6.4 (06-runtime-view.md): steps 3-5 - Mission Service keeps rover position, appends `Step` with `rejection: "OUT_OF_BOUNDS"`, saves session, responds HTTP 200
+* Chapter 5, Rejected-Move Behaviour (05-building-block-view.md): Mission Service leaves rover at current position and records `Step` with `rejection` set; step history is a complete log of all attempted moves including rejected ones
+
+AS A Developer
+I WANT the Mission Service to leave the rover at its current position and append a `Step` with `rejection: "OUT_OF_BOUNDS"` when the Simulation Service returns that rejection
+SO THAT the history is a complete record of all attempted moves and the rover state is correct for subsequent commands
+
+##### SCENARIO 1: Rejected move is recorded; rover state unchanged in session
+
+**Scenario ID**: SIMULATION-BE-002.2-S1
+
+**GIVEN**
+* An active session in InMemorySessionRepository with plateau `5 5`, Rover 0 at `0 0 S`
+* Assumption: Request body `{ "rover_index": 0, "commands": "M" }`
+
+**WHEN**
+* `POST /api/v1/session/commands` is called (via gateway)
+
+**THEN**
+* The Mission Service calls `POST /api/v1/simulation/move` once and receives `rejection: "OUT_OF_BOUNDS"`
+* Rover 0 position in InMemorySessionRepository remains `0 0 S`
+* The session history gains 1 new `Step` with `rover_index: 0`, `operation: "MOVE_FORWARD"`, `resulting_position: { x: 0, y: 0 }`, `resulting_heading: "S"`, `rejection: "OUT_OF_BOUNDS"`
+* Assumption: HTTP 200 is returned (Chapter 6.4 step 4; status code not formally specified)
+* Assumption: The response includes Rover 0 still at `0 0 S` and the 1 new step with `rejection: "OUT_OF_BOUNDS"`
+
+##### SCENARIO 2: Rejected step followed by a valid step - both recorded correctly
+
+**Scenario ID**: SIMULATION-BE-002.2-S2
+
+**GIVEN**
+* An active session in InMemorySessionRepository with plateau `5 5`, Rover 0 at `0 0 S`
+* Assumption: Request body `{ "rover_index": 0, "commands": "MR" }`
+
+**WHEN**
+* `POST /api/v1/session/commands` is called
+
+**THEN**
+* The Mission Service calls `POST /api/v1/simulation/move` twice
+* First call returns `rejection: "OUT_OF_BOUNDS"`; Rover 0 stays at `0 0 S`
+* Second call (`TURN_RIGHT`) returns `rejection: null`; Rover 0 moves to `0 0 W`
+* The session history gains 2 `Step` records in order: first with `rejection: "OUT_OF_BOUNDS"`, second with `rejection: null`
+* InMemorySessionRepository holds Rover 0 at `0 0 W` with 2 appended steps
+
+---
+
+### Infrastructure Stories
+
+SIMULATION-STORY-002 uses the same Simulation Service and Mission Service containers defined in SIMULATION-INFRA-001.1 and MISSION-INFRA-001.1. The statelessness (SIMULATION-INFRA-001.2), event bus absence (SIMULATION-INFRA-001.3), and Simulation Service logging (SIMULATION-INFRA-001.4) sub-stories apply unchanged. The new sub-story below covers the Mission Service application-level logging that Chapter 8.4 defines specifically for that service.
+
+#### SIMULATION-INFRA-002.1: Mission Service logs each step result including rejection reason
+
+**Parent**: SIMULATION-STORY-002
+**Service**: Mission Service (`mission:8000`)
+**Architecture references**:
+* Chapter 8.4 (08-cross-cutting-concepts.md): Mission Service logs "each step result (operation, rover index, rejection if any)" to stdout at `INFO` level using Python `logging`; log level controlled by `LOG_LEVEL` env var; observable via `docker compose logs`
+
+AS A Developer
+I WANT the Mission Service to emit an `INFO` log line for each step result, including the operation, the rover index, and the rejection reason when present
+SO THAT I can confirm rejected moves are recorded correctly by inspecting `docker compose logs mission`
+
+##### SCENARIO 1: Rejected move produces an INFO log line with operation, rover index, and OUT_OF_BOUNDS
+
+**Scenario ID**: SIMULATION-INFRA-002.1-S1
+
+**GIVEN**
+* The `mission` container is running with `LOG_LEVEL=INFO`
+* An active session exists with plateau `5 5`, Rover 0 at `0 0 S`
+
+**WHEN**
+* `POST /api/v1/session/commands` is called with `{ "rover_index": 0, "commands": "M" }` and the Simulation Service returns `rejection: "OUT_OF_BOUNDS"`
+
+**THEN**
+* `docker compose logs mission` shows an `INFO` log line containing the operation (`MOVE_FORWARD`), the rover index (`0`), and the rejection reason (`OUT_OF_BOUNDS`)
+
+---
+
+### Implementation Order
+
+1. SIMULATION-BE-002.1: Extend Simulation domain in Simulation Service to return `OUT_OF_BOUNDS` rejection when target cell is outside plateau boundary (builds on SIMULATION-BE-001.1; no new container work)
+2. SIMULATION-BE-002.2: Extend Mission Service simulation loop to handle `OUT_OF_BOUNDS` rejection: keep rover position, record `Step` with `rejection` set (builds on SIMULATION-BE-001.2)
+3. SIMULATION-INFRA-002.1: Add `INFO` log statement in Mission Service for each step result, including operation, rover index, and rejection if any (Chapter 8.4)
+4. SIMULATION-FE-002.1: Extend Grid View and App to render out-of-bounds indicator on rejected steps
+5. SIMULATION-STORY-002 end-to-end verification: Player submits `M` for Rover 0 at `0 0 S` on plateau `5 5`; rover stays at `0 0 S`; step shows `rejection: "OUT_OF_BOUNDS"`; Grid View renders indicator; `docker compose logs mission` shows the INFO log line (SIMULATION-STORY-002-S1, SIMULATION-INFRA-002.1-S1)
