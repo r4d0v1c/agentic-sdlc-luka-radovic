@@ -423,3 +423,276 @@ SO THAT I can observe parse requests and their outcomes using `docker compose lo
 8. COMMAND-STORY-001 end-to-end verification: Player submits `LMLMLMLMM` for Rover 0 on plateau `5 5` from `1 2 N`, the Command Service parses the string and returns 9 operations, the Command Form shows no error (COMMAND-STORY-001-S1)
 
 ---
+
+## COMMAND-STORY-002: Reject Unknown Command Characters
+
+**Priority**: Supporting (80%)
+**Features**: F-3 (Command execution)
+**Architecture references**:
+* Chapter 5.2 (05-building-block-view.md): Command Parser domain component raises `UnknownCommandError` on unrecognised characters; `POST /api/v1/commands/parse`
+* Chapter 8.2 (08-cross-cutting-concepts.md): Domain validation in Command Parser; `UnknownCommandError` mapped to HTTP 422 with body `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }`; Frontend displays `detail` string
+* Chapter 8.3 (08-cross-cutting-concepts.md): `UnknownCommandError` -> HTTP 422, error code `UNKNOWN_COMMAND`; no stack trace exposed; API Client surfaces `detail` field on non-2xx responses
+* Chapter 10.2 (10-quality-requirements.md): QS-07 - Player submits `"LMX"`; HTTP 422 returned; `detail` identifies the invalid character and its position; session state unchanged
+
+AS A Player
+I WANT to see a clear error message identifying the unrecognised character and its position when I submit a command string with an invalid character
+SO THAT I know exactly what to fix before resubmitting
+
+---
+
+### Scenarios
+
+#### SCENARIO 1: Command string with one unknown character at position 2 (QS-07)
+
+**Scenario ID**: COMMAND-STORY-002-S1
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `1 2 N`
+* The player has entered command string `LMX` for Rover 0
+
+**WHEN**
+* The player submits the Command Form
+
+**THEN**
+* The Mission Service returns HTTP 422 (Chapter 8.3)
+* The error body contains `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }` (Chapter 8.2 gives this exact example)
+* The Command Form displays the detail string `"Unrecognised character 'X' at position 2"` (Chapter 8.2: Frontend displays `detail` string)
+* Rover 0 position and the session state are unchanged (Chapter 10.2 QS-07)
+
+---
+
+#### SCENARIO 2: Command string consisting entirely of unknown characters
+
+**Scenario ID**: COMMAND-STORY-002-S2
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `0 0 N`
+* The player has entered command string `XYZ` for Rover 0
+
+**WHEN**
+* The player submits the Command Form
+
+**THEN**
+* HTTP 422 is returned
+* Assumption: The error body contains `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 0" }` (the architecture specifies the first unrecognised character triggers `UnknownCommandError`; position 0 for the first character - the architecture does not specify whether parsing continues after the first error)
+* The Command Form displays the detail string
+* Session state is unchanged
+
+---
+
+#### SCENARIO 3: Unknown character in the middle of an otherwise valid string
+
+**Scenario ID**: COMMAND-STORY-002-S3
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `2 2 N`
+* The player has entered command string `LM2M` for Rover 0
+
+**WHEN**
+* The player submits the Command Form
+
+**THEN**
+* HTTP 422 is returned
+* Assumption: The error body contains `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character '2' at position 2" }` (architecture error body format from Chapter 8.2; character `2` is not in `L`, `R`, `M`)
+* The Command Form displays the detail string
+* Session state is unchanged; no operations are applied to Rover 0
+
+---
+
+#### SCENARIO 4: Valid command string is accepted after a rejected one
+
+**Scenario ID**: COMMAND-STORY-002-S4
+
+**GIVEN**
+* An active session exists with plateau `5 5`, Rover 0 at `2 2 N`
+* The player first submits `LX` (rejected) and then submits `LM` (valid)
+
+**WHEN**
+* The player submits the Command Form with `LM` after the previous error
+
+**THEN**
+* Assumption: HTTP 200 is returned for the second submission
+* Rover 0 is at `1 2 W` (TURN_LEFT from `N` gives `W`; MOVE_FORWARD heading `W` decrements x: `2 2 W` -> `1 2 W`)
+* The Command Form shows no error message
+
+---
+
+### Frontend Stories
+
+#### COMMAND-FE-002.1: Command Form displays UNKNOWN_COMMAND error detail to the player
+
+**Parent**: COMMAND-STORY-002
+**Component**: Command Form, API Client (05-building-block-view.md, Chapter 5.2)
+**Architecture references**:
+* Chapter 8.2 (08-cross-cutting-concepts.md): Frontend displays the `detail` string to the player rather than a generic failure message
+* Chapter 8.3 (08-cross-cutting-concepts.md): API Client reads JSON error body and surfaces `detail` field on non-2xx response; no raw HTTP status codes shown to the player
+* Chapter 10.2 (10-quality-requirements.md): QS-07 - Frontend renders the `detail` string; session state unchanged
+
+AS A Player
+I WANT the Command Form to show the exact error detail from the server when my command string contains an unrecognised character
+SO THAT I can identify and correct the bad character without guessing
+
+##### SCENARIO 1: Command Form shows detail from UNKNOWN_COMMAND response
+
+**Scenario ID**: COMMAND-FE-002.1-S1
+
+**GIVEN**
+* An active session exists; the Command Form is rendered with Rover 0 selected and `LMX` entered
+* Assumption: The API Client receives HTTP 422 with body `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }` from `POST /api/v1/session/commands`
+
+**WHEN**
+* App processes the error response from the API Client
+
+**THEN**
+* The Command Form renders the string `"Unrecognised character 'X' at position 2"` as an error message (Chapter 8.2)
+* No raw status code or stack trace is shown (Chapter 8.3)
+* The form input is not cleared; the player can edit and resubmit
+
+##### SCENARIO 2: Command Form clears the error when the player resubmits a valid string
+
+**Scenario ID**: COMMAND-FE-002.1-S2
+
+**GIVEN**
+* The Command Form is showing error `"Unrecognised character 'X' at position 2"` after a previous failed submission
+* Assumption: The player edits the input to `LM` and the API Client returns HTTP 200
+
+**WHEN**
+* The player resubmits the Command Form with `LM`
+
+**THEN**
+* The error message is no longer displayed
+* No error message is shown to the player
+
+---
+
+### Backend Stories
+
+#### COMMAND-BE-002.1: Command Parser raises UnknownCommandError for unrecognised characters
+
+**Parent**: COMMAND-STORY-002
+**Service**: Command Service (`command:8001`)
+**Architecture references**:
+* Chapter 5.2 (05-building-block-view.md): Command Parser domain component raises `UnknownCommandError` on unrecognised characters
+* Chapter 8.2 (08-cross-cutting-concepts.md): Domain validation in Command Parser; `UnknownCommandError` mapped to HTTP 422 with `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }`
+* Chapter 8.3 (08-cross-cutting-concepts.md): `UnknownCommandError` -> HTTP 422, error code `UNKNOWN_COMMAND`; global exception handler catches domain exceptions; no stack trace exposed
+
+AS A Developer
+I WANT the Command Service `POST /api/v1/commands/parse` endpoint to return HTTP 422 with `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character '<c>' at position <n>" }` when the input contains any character outside `L`, `R`, `M`
+SO THAT the Mission Service receives a typed error it can propagate to the player via the HTTP Client
+
+##### SCENARIO 1: Single unknown character at position 2 triggers 422 (QS-07)
+
+**Scenario ID**: COMMAND-BE-002.1-S1
+
+**GIVEN**
+* Assumption: Request body `{ "commands": "LMX" }` (field name `commands` from COMMAND-BE-001.1)
+
+**WHEN**
+* `POST /api/v1/commands/parse` is called on the Command Service
+
+**THEN**
+* HTTP 422 is returned
+* Response body is `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }` (Chapter 8.2 gives this exact body)
+
+##### SCENARIO 2: Unknown character at position 0
+
+**Scenario ID**: COMMAND-BE-002.1-S2
+
+**GIVEN**
+* Assumption: Request body `{ "commands": "ZLM" }`
+
+**WHEN**
+* `POST /api/v1/commands/parse` is called
+
+**THEN**
+* HTTP 422 is returned
+* Assumption: Response body is `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'Z' at position 0" }` (format from Chapter 8.2; position 0 for the first character)
+
+##### SCENARIO 3: Unknown character in a string with valid characters on both sides
+
+**Scenario ID**: COMMAND-BE-002.1-S3
+
+**GIVEN**
+* Assumption: Request body `{ "commands": "LM2M" }`
+
+**WHEN**
+* `POST /api/v1/commands/parse` is called
+
+**THEN**
+* HTTP 422 is returned
+* Assumption: Response body is `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character '2' at position 2" }` (digit `2` is not in `L`, `R`, `M`)
+
+##### SCENARIO 4: Lowercase valid letters are rejected (commands are case-sensitive)
+
+**Scenario ID**: COMMAND-BE-002.1-S4
+
+**GIVEN**
+* Assumption: Request body `{ "commands": "lmr" }` (lowercase letters are not in the defined command set `L`, `R`, `M`)
+
+**WHEN**
+* `POST /api/v1/commands/parse` is called
+
+**THEN**
+* HTTP 422 is returned
+* Assumption: Response body is `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'l' at position 0" }` (Chapter 8.2 defines command characters as `L/R/M`; lowercase variants are not listed; this is an Assumption about case-sensitivity)
+
+##### SCENARIO 5: Empty command string is accepted as zero operations
+
+**Scenario ID**: COMMAND-BE-002.1-S5
+
+**GIVEN**
+* Assumption: Request body `{ "commands": "" }` (empty string contains no characters; no unknown characters are present)
+
+**WHEN**
+* `POST /api/v1/commands/parse` is called
+
+**THEN**
+* HTTP 200 is returned
+* Assumption: Response body is `{ "operations": [] }` (the empty string parses to an empty operation list; no `UnknownCommandError` is raised because there are no characters to reject - the architecture does not explicitly address this case; flagged as a gap: the architecture does not state whether an empty command string is valid or should be rejected at schema validation level)
+
+---
+
+#### COMMAND-BE-002.2: Mission Service propagates UNKNOWN_COMMAND error to the player
+
+**Parent**: COMMAND-STORY-002
+**Service**: Mission Service (`mission:8000`)
+**Architecture references**:
+* Chapter 8.3 (08-cross-cutting-concepts.md): Non-2xx from downstream service causes HTTP Client to raise `DownstreamError(status, body)`; Mission API Router returns HTTP 502 Bad Gateway
+* Chapter 10.2 (10-quality-requirements.md): QS-07 - HTTP 422 is returned end-to-end with `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }`
+* Chapter 5.2 (05-building-block-view.md): Mission Service HTTP Client wraps `httpx` calls; handles non-2xx responses
+
+**Gap**: Chapter 8.3 maps every non-2xx downstream response to HTTP 502 via `DownstreamError`. QS-07 (Chapter 10.2) requires HTTP 422 with the `UNKNOWN_COMMAND` body to reach the player end-to-end. These two sections contradict each other. Recommended architecture change: the HTTP Client should detect a downstream 422 with a known error code (e.g. `UNKNOWN_COMMAND`) and re-raise it as a typed domain exception (e.g. `UnknownCommandError`) rather than a generic `DownstreamError`. The Mission API Router would then map `UnknownCommandError` to HTTP 422, consistent with QS-07. This requires a targeted amendment to Chapter 8.3 and the HTTP Client component in Chapter 5.2.
+
+AS A Developer
+I WANT the Mission Service to return HTTP 422 with the `UNKNOWN_COMMAND` body from the Command Service when that service rejects an unrecognised character
+SO THAT the player receives the exact error detail and knows which character to fix
+
+##### SCENARIO 1: Mission Service returns HTTP 422 with UNKNOWN_COMMAND body when Command Service rejects the string
+
+**Scenario ID**: COMMAND-BE-002.2-S1
+
+**GIVEN**
+* An active session in InMemorySessionRepository with plateau `5 5`, Rover 0 at `1 2 N`
+* Assumption: `POST /api/v1/session/commands` is called with `{ "rover_index": 0, "commands": "LMX" }`
+
+**WHEN**
+* The Mission Service calls `POST /api/v1/commands/parse` and the Command Service returns HTTP 422 with `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }`
+
+**THEN**
+* The Mission Service returns HTTP 422 with body `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }` (QS-07, Chapter 10.2; requires the architecture change described in the Gap above)
+* The session state is unchanged: no operations applied, no steps recorded in InMemorySessionRepository
+
+---
+
+### Infrastructure Stories
+
+COMMAND-STORY-002 uses the same Command Service and Mission Service containers defined in COMMAND-INFRA-001.1 and MISSION-INFRA-001.1. The statelessness (COMMAND-INFRA-001.2), event bus absence (COMMAND-INFRA-001.3), and logging (COMMAND-INFRA-001.4) sub-stories all apply unchanged. No new INFRA sub-stories are required: the deployment, data store, events, and observability concerns are identical to those in COMMAND-STORY-001 and no new container or configuration is introduced by this story.
+
+---
+
+### Implementation Order
+
+1. COMMAND-BE-002.1: Extend Command Parser domain in Command Service to raise `UnknownCommandError` with character and position on any non-`L`/`R`/`M` character; extend API Router global exception handler to map it to HTTP 422 with `{ "error": "UNKNOWN_COMMAND", "detail": "..." }` (builds on COMMAND-BE-001.1)
+2. COMMAND-BE-002.2: Amend the Mission Service HTTP Client so a downstream 422 with error code `UNKNOWN_COMMAND` is re-raised as a typed domain exception instead of a generic `DownstreamError`; the Mission API Router maps it to HTTP 422 with the body passed through (requires the Chapter 8.3 architecture change described in the Gap; builds on COMMAND-BE-001.2)
+3. COMMAND-FE-002.1: Extend Command Form and API Client to display `detail` from `UNKNOWN_COMMAND` responses and clear it on a successful resubmission (builds on COMMAND-FE-001.1)
+4. COMMAND-STORY-002 end-to-end verification: Player submits `LMX` for Rover 0; HTTP 422 is returned; Command Form displays `"Unrecognised character 'X' at position 2"`; session state unchanged (COMMAND-STORY-002-S1)
