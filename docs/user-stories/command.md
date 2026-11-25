@@ -686,7 +686,33 @@ SO THAT the player receives the exact error detail and knows which character to 
 
 ### Infrastructure Stories
 
-COMMAND-STORY-002 uses the same Command Service and Mission Service containers defined in COMMAND-INFRA-001.1 and MISSION-INFRA-001.1. The statelessness (COMMAND-INFRA-001.2), event bus absence (COMMAND-INFRA-001.3), and logging (COMMAND-INFRA-001.4) sub-stories all apply unchanged. No new INFRA sub-stories are required: the deployment, data store, events, and observability concerns are identical to those in COMMAND-STORY-001 and no new container or configuration is introduced by this story.
+#### COMMAND-INFRA-002.1: Rejected parse is visible in the Command Service access log
+
+**Parent**: COMMAND-STORY-002
+**Service**: Command Service (`command`)
+**Architecture references**:
+* Chapter 8.4 (08-cross-cutting-concepts.md): All FastAPI services log incoming request method and path, response status, and latency via the uvicorn access log to stdout, visible via `docker compose logs`
+* COMMAND-INFRA-001.4: establishes uvicorn access log observability for the Command Service; this sub-story adds only the 422 case
+
+AS A Developer
+I WANT a rejected parse request to appear in the Command Service logs with its response status
+SO THAT I can observe rejected command strings using `docker compose logs command` without adding any new logging configuration
+
+##### SCENARIO 1: Rejected parse of `LMX` is logged with status 422
+
+**Scenario ID**: COMMAND-INFRA-002.1-S1
+
+**GIVEN**
+* The `command` container is running with `LOG_LEVEL=INFO`
+* Assumption: `POST /api/v1/commands/parse` is called with `{ "commands": "LMX" }` and returns HTTP 422 with `{ "error": "UNKNOWN_COMMAND", "detail": "Unrecognised character 'X' at position 2" }` (COMMAND-BE-002.1-S1)
+
+**WHEN**
+* `docker compose logs command` is read
+
+**THEN**
+* The output shows a uvicorn access log line for `POST /api/v1/commands/parse` with status `422` (Chapter 8.4: services log the response status via the uvicorn access log)
+
+The deployment (COMMAND-INFRA-001.1), statelessness (COMMAND-INFRA-001.2), event bus absence (COMMAND-INFRA-001.3), and the general access log setup (COMMAND-INFRA-001.4) apply unchanged. No other INFRA sub-stories are required for this story.
 
 ---
 
@@ -694,5 +720,6 @@ COMMAND-STORY-002 uses the same Command Service and Mission Service containers d
 
 1. COMMAND-BE-002.1: Extend Command Parser domain in Command Service to raise `UnknownCommandError` with character and position on any non-`L`/`R`/`M` character; extend API Router global exception handler to map it to HTTP 422 with `{ "error": "UNKNOWN_COMMAND", "detail": "..." }` (builds on COMMAND-BE-001.1)
 2. COMMAND-BE-002.2: Amend the Mission Service HTTP Client so a downstream 422 with error code `UNKNOWN_COMMAND` is re-raised as a typed domain exception instead of a generic `DownstreamError`; the Mission API Router maps it to HTTP 422 with the body passed through (requires the Chapter 8.3 architecture change described in the Gap; builds on COMMAND-BE-001.2)
-3. COMMAND-FE-002.1: Extend Command Form and API Client to display `detail` from `UNKNOWN_COMMAND` responses and clear it on a successful resubmission (builds on COMMAND-FE-001.1)
-4. COMMAND-STORY-002 end-to-end verification: Player submits `LMX` for Rover 0; HTTP 422 is returned; Command Form displays `"Unrecognised character 'X' at position 2"`; session state unchanged (COMMAND-STORY-002-S1)
+3. COMMAND-INFRA-002.1: Verify the rejected parse of `LMX` produces a uvicorn access log line with status 422 in `docker compose logs command` (no new configuration; reuses COMMAND-INFRA-001.4)
+4. COMMAND-FE-002.1: Extend Command Form and API Client to display `detail` from `UNKNOWN_COMMAND` responses and clear it on a successful resubmission (builds on COMMAND-FE-001.1)
+5. COMMAND-STORY-002 end-to-end verification: Player submits `LMX` for Rover 0; HTTP 422 is returned; Command Form displays `"Unrecognised character 'X' at position 2"`; session state unchanged (COMMAND-STORY-002-S1)
