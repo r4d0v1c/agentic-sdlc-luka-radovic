@@ -2,7 +2,7 @@
 
 ## COMMAND-STORY-001: Submit a Command String
 
-**Priority**: Core (20%)
+**Priority**: Supporting (80%)
 **Features**: F-3 (Command execution)
 **Architecture references**:
 * Chapter 6.2 (06-runtime-view.md): Execute Commands, Happy Path, steps 1-4

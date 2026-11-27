@@ -22,7 +22,7 @@
 | ID | Title | Domain | Features | Priority | Status | File |
 |----|-------|--------|----------|----------|--------|------|
 | MISSION-STORY-001 | Create a session | MISSION | F-1, F-2, F-6 | Core | Approved | [mission.md](mission.md) |
-| COMMAND-STORY-001 | Submit a command string | COMMAND | F-3 | Core | Approved | [command.md](command.md) |
+| COMMAND-STORY-001 | Submit a command string | COMMAND | F-3 | Supporting | Approved | [command.md](command.md) |
 | SIMULATION-STORY-001 | Rover turns and moves, final position reported | SIMULATION | F-3, F-5, F-6 | Core | Approved | [simulation.md](simulation.md) |
 | COMMAND-STORY-002 | Reject unknown command characters | COMMAND | F-3 | Supporting | Approved | [command.md](command.md) |
 | SIMULATION-STORY-002 | Reject out-of-bounds moves | SIMULATION | F-4 | Supporting | Approved | [simulation.md](simulation.md) |
@@ -36,10 +36,16 @@
 ## Pareto Progress
 
 ```
-Pareto Progress: 3/3 core stories (100% of 20% core stories) - core set complete
+Pareto Progress: 2/2 core stories (2 of 9 stories are Core, 22%)
 Core functionality coverage: ~80% of 80% target
-Supporting stories approved: 2/6 (SIMULATION-STORY-002, COMMAND-STORY-002)
+Supporting stories approved: 3/7 (COMMAND-STORY-001, COMMAND-STORY-002, SIMULATION-STORY-002)
 ```
+
+---
+
+## Core path prerequisites
+
+SIMULATION-STORY-001 is Core but depends on COMMAND-STORY-001, which is now Supporting. This dependency is not hidden: SIMULATION-STORY-001 relies on COMMAND-BE-001.1 (parse endpoint) and COMMAND-BE-001.2 (Mission Service parse phase), so those two sub-stories must be implemented together with the core stories. The Pareto split counts stories, not sub-stories.
 
 ---
 
@@ -47,10 +53,10 @@ Supporting stories approved: 2/6 (SIMULATION-STORY-002, COMMAND-STORY-002)
 
 ### Core stories (dependency order)
 1. MISSION-STORY-001: Create a session (no dependencies)
-2. COMMAND-STORY-001: Submit a command string (depends on MISSION-STORY-001)
-3. SIMULATION-STORY-001: Rover turns and moves (depends on MISSION-STORY-001, COMMAND-STORY-001)
+2. SIMULATION-STORY-001: Rover turns and moves (depends on MISSION-STORY-001; requires COMMAND-BE-001.1 and COMMAND-BE-001.2, see Core path prerequisites)
 
 ### Supporting stories (by value)
+3. COMMAND-STORY-001: Submit a command string (COMMAND-BE-001.1 and COMMAND-BE-001.2 are core path prerequisites)
 4. COMMAND-STORY-002: Reject unknown command characters
 5. SIMULATION-STORY-002: Reject out-of-bounds moves
 6. SIMULATION-STORY-003: Reject collision moves
